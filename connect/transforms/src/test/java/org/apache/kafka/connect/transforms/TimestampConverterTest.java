@@ -107,6 +107,13 @@ public class TimestampConverterTest {
 
 
     // Conversions without schemas (most flexible Timestamp -> other types)
+    @Test
+    public void testNullValue() {
+        xformValue.configure(Collections.singletonMap(TimestampConverter.TARGET_TYPE_CONFIG, "Timestamp"));
+        SourceRecord transformed = xformValue.apply(new SourceRecord(null, null, "topic", 0, null, null));
+
+        assertNull(transformed.value());
+    }
 
     @Test
     public void testSchemalessIdentity() {

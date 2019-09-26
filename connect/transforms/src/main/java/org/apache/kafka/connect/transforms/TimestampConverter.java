@@ -269,6 +269,10 @@ public abstract class TimestampConverter<R extends ConnectRecord<R>> implements 
 
     @Override
     public R apply(R record) {
+        if (operatingValue(record) == null) {
+            return record;
+        }
+
         if (operatingSchema(record) == null) {
             return applySchemaless(record);
         } else {
