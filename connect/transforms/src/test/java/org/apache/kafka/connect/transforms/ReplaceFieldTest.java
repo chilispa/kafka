@@ -27,6 +27,7 @@ import java.util.HashMap;
 import java.util.Map;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertNull;
 
 public class ReplaceFieldTest {
     private ReplaceField<SinkRecord> xform = new ReplaceField.Value<>();
@@ -61,6 +62,21 @@ public class ReplaceFieldTest {
     }
 
     @Test
+    public void schemalessNullKeyAndValue() {
+        final Map<String, String> props = new HashMap<>();
+        props.put("blacklist", "dont");
+        props.put("renames", "abc:xyz,foo:bar");
+
+        xform.configure(props);
+
+        final SinkRecord record = new SinkRecord("test", 0, null, null, null, null, 0);
+        final SinkRecord transformedRecord = xform.apply(record);
+
+        final Map updatedValue = (Map) transformedRecord.value();
+        assertNull(updatedValue);
+    }
+
+    @Test
     public void withSchema() {
         final Map<String, String> props = new HashMap<>();
         props.put("whitelist", "abc,foo");
@@ -89,6 +105,28 @@ public class ReplaceFieldTest {
         assertEquals(2, updatedValue.schema().fields().size());
         assertEquals(new Integer(42), updatedValue.getInt32("xyz"));
         assertEquals(true, updatedValue.getBoolean("bar"));
+    }
+
+    @Test
+    public void withSchemaNullKeyAndValue() {
+        final Map<String, String> props = new HashMap<>();
+        props.put("whitelist", "abc,foo");
+        props.put("renames", "abc:xyz,foo:bar");
+
+        xform.configure(props);
+
+        final Schema schema = SchemaBuilder.struct()
+                .field("dont", Schema.STRING_SCHEMA)
+                .field("abc", Schema.INT32_SCHEMA)
+                .field("foo", Schema.BOOLEAN_SCHEMA)
+                .field("etc", Schema.STRING_SCHEMA)
+                .build();
+
+        final SinkRecord record = new SinkRecord("test", 0, null, null, schema, null, 0);
+        final SinkRecord transformedRecord = xform.apply(record);
+
+        final Struct updatedValue = (Struct) transformedRecord.value();
+        assertNull(updatedValue);
     }
 
 }
