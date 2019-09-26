@@ -123,6 +123,9 @@ public abstract class ReplaceField<R extends ConnectRecord<R>> implements Transf
 
     @Override
     public R apply(R record) {
+        if (record.value() == null)
+            return record;
+
         if (operatingSchema(record) == null) {
             return applySchemaless(record);
         } else {
