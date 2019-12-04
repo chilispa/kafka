@@ -77,11 +77,12 @@ public abstract class TimestampConverter<R extends ConnectRecord<R>> implements 
     private static final String PURPOSE = "converting timestamp formats";
 
     private static final String TYPE_STRING = "string";
+    private static final String TYPE_OPTIONAL_STRING = "optionalString";
     private static final String TYPE_UNIX = "unix";
     private static final String TYPE_DATE = "Date";
     private static final String TYPE_TIME = "Time";
     private static final String TYPE_TIMESTAMP = "Timestamp";
-    private static final Set<String> VALID_TYPES = new HashSet<>(Arrays.asList(TYPE_STRING, TYPE_UNIX, TYPE_DATE, TYPE_TIME, TYPE_TIMESTAMP));
+    private static final Set<String> VALID_TYPES = new HashSet<>(Arrays.asList(TYPE_STRING, TYPE_OPTIONAL_STRING, TYPE_UNIX, TYPE_DATE, TYPE_TIME, TYPE_TIMESTAMP));
 
     private static final TimeZone UTC = TimeZone.getTimeZone("UTC");
 
@@ -120,6 +121,32 @@ public abstract class TimestampConverter<R extends ConnectRecord<R>> implements 
             @Override
             public Schema typeSchema() {
                 return Schema.STRING_SCHEMA;
+            }
+
+            @Override
+            public String toType(Config config, Date orig) {
+                synchronized (config.format) {
+                    return config.format.format(orig);
+                }
+            }
+        });
+
+        TRANSLATORS.put(TYPE_OPTIONAL_STRING, new TimestampTranslator() {
+            @Override
+            public Date toRaw(Config config, Object orig) {
+                if (!(orig instanceof String))
+                    throw new DataException("Expected string timestamp to be a String, but found " + orig.getClass());
+                try {
+                    return config.format.parse((String) orig);
+                } catch (ParseException e) {
+                    throw new DataException("Could not parse timestamp: value (" + orig + ") does not match pattern ("
+                            + config.format.toPattern() + ")", e);
+                }
+            }
+
+            @Override
+            public Schema typeSchema() {
+                return Schema.OPTIONAL_STRING_SCHEMA;
             }
 
             @Override
@@ -368,7 +395,7 @@ public abstract class TimestampConverter<R extends ConnectRecord<R>> implements 
         Struct updatedValue = new Struct(updatedSchema);
         for (Field field : value.schema().fields()) {
             final Object updatedFieldValue;
-            if (field.name().equals(config.field)) {
+            if (field.name().equals(config.field) && value.get(field) != null) {
                 updatedFieldValue = convertTimestamp(value.get(field), timestampTypeFromSchema(field.schema()));
             } else {
                 updatedFieldValue = value.get(field);

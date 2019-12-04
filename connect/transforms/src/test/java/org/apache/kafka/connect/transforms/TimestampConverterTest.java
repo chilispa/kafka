@@ -346,6 +346,61 @@ public class TimestampConverterTest {
         assertEquals("test", ((Struct) transformed.value()).get("other"));
     }
 
+    @Test
+    public void testWithSchemaFieldConversionToStringField() {
+        Map<String, String> config = new HashMap<>();
+        config.put(TimestampConverter.TARGET_TYPE_CONFIG, "string");
+        config.put(TimestampConverter.FIELD_CONFIG, "ts");
+        config.put(TimestampConverter.FORMAT_CONFIG, "yyyy-MM-dd'T'hh:mm:ss'Z'");
+        xformValue.configure(config);
+
+        Schema structWithTimestampFieldSchema = SchemaBuilder.struct()
+                .field("ts", Schema.INT64_SCHEMA)
+                .field("other", Schema.STRING_SCHEMA)
+                .build();
+        Struct original = new Struct(structWithTimestampFieldSchema);
+        original.put("ts", 1575456080416L);
+        original.put("other", "test");
+
+        SourceRecord transformed = xformValue.apply(new SourceRecord(null, null, "topic", 0, structWithTimestampFieldSchema, original));
+
+        Schema expectedSchema = SchemaBuilder.struct()
+                .field("ts", Schema.STRING_SCHEMA)
+                .field("other", Schema.STRING_SCHEMA)
+                .build();
+        assertEquals(expectedSchema, transformed.valueSchema());
+        assertEquals("2019-12-04T10:41:20Z", ((Struct) transformed.value()).get("ts"));
+        assertEquals("test", ((Struct) transformed.value()).get("other"));
+    }
+
+
+    @Test
+    public void testWithSchemaFieldConversionNullToStringField() {
+        Map<String, String> config = new HashMap<>();
+        config.put(TimestampConverter.TARGET_TYPE_CONFIG, "optionalString");
+        config.put(TimestampConverter.FIELD_CONFIG, "ts");
+        config.put(TimestampConverter.FORMAT_CONFIG, "yyyy-MM-dd'T'hh:mm:ss'Z'");
+        xformValue.configure(config);
+
+        Schema structWithTimestampFieldSchema = SchemaBuilder.struct()
+                .field("ts", Schema.OPTIONAL_INT64_SCHEMA).optional().defaultValue(null)
+                .field("other", Schema.STRING_SCHEMA)
+                .build();
+        Struct original = new Struct(structWithTimestampFieldSchema);
+        original.put("ts", null);
+        original.put("other", "test");
+
+        SourceRecord transformed = xformValue.apply(new SourceRecord(null, null, "topic", 0, structWithTimestampFieldSchema, original));
+
+        Schema expectedSchema = SchemaBuilder.struct()
+                .field("ts", Schema.OPTIONAL_STRING_SCHEMA).optional()
+                .field("other", Schema.STRING_SCHEMA)
+                .build();
+        assertEquals(expectedSchema, transformed.valueSchema());
+        assertEquals(null, ((Struct) transformed.value()).get("ts"));
+        assertEquals("test", ((Struct) transformed.value()).get("other"));
+    }
+
 
     // Validate Key implementation in addition to Value
 
