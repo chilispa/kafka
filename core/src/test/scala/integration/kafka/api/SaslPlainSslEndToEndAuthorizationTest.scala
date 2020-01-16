@@ -21,6 +21,8 @@ import javax.security.auth.callback._
 import javax.security.auth.Subject
 import javax.security.auth.login.AppConfigurationEntry
 
+import scala.collection.Seq
+
 import kafka.server.KafkaConfig
 import kafka.utils.{TestUtils}
 import kafka.utils.JaasTestUtils._
@@ -57,8 +59,8 @@ object SaslPlainSslEndToEndAuthorizationTest {
   }
 
   class TestServerCallbackHandler extends AuthenticateCallbackHandler {
-    def configure(configs: java.util.Map[String, _], saslMechanism: String, jaasConfigEntries: java.util.List[AppConfigurationEntry]) {}
-    def handle(callbacks: Array[Callback]) {
+    def configure(configs: java.util.Map[String, _], saslMechanism: String, jaasConfigEntries: java.util.List[AppConfigurationEntry]): Unit = {}
+    def handle(callbacks: Array[Callback]): Unit = {
       var username: String = null
       for (callback <- callbacks) {
         if (callback.isInstanceOf[NameCallback])
@@ -70,12 +72,12 @@ object SaslPlainSslEndToEndAuthorizationTest {
           throw new UnsupportedCallbackException(callback)
       }
     }
-    def close() {}
+    def close(): Unit = {}
   }
 
   class TestClientCallbackHandler extends AuthenticateCallbackHandler {
-    def configure(configs: java.util.Map[String, _], saslMechanism: String, jaasConfigEntries: java.util.List[AppConfigurationEntry]) {}
-    def handle(callbacks: Array[Callback]) {
+    def configure(configs: java.util.Map[String, _], saslMechanism: String, jaasConfigEntries: java.util.List[AppConfigurationEntry]): Unit = {}
+    def handle(callbacks: Array[Callback]): Unit = {
       val subject = Subject.getSubject(AccessController.getContext())
       val username = subject.getPublicCredentials(classOf[String]).iterator().next()
       for (callback <- callbacks) {
@@ -88,7 +90,7 @@ object SaslPlainSslEndToEndAuthorizationTest {
           throw new UnsupportedCallbackException(callback)
       }
     }
-    def close() {}
+    def close(): Unit = {}
   }
 }
 
@@ -134,7 +136,7 @@ class SaslPlainSslEndToEndAuthorizationTest extends SaslEndToEndAuthorizationTes
    * have expected ACLs.
    */
   @Test
-  def testAcls() {
+  def testAcls(): Unit = {
     TestUtils.verifySecureZkAcls(zkClient, 1)
   }
 }

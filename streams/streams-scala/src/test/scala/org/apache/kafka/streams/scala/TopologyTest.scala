@@ -37,17 +37,17 @@ import org.apache.kafka.streams.kstream.{
   TransformerSupplier,
   ValueJoiner,
   ValueMapper,
-  Joined => JoinedJ,
   KGroupedStream => KGroupedStreamJ,
   KStream => KStreamJ,
   KTable => KTableJ,
-  Materialized => MaterializedJ
+  Materialized => MaterializedJ,
+  StreamJoined => StreamJoinedJ
 }
 import org.apache.kafka.streams.processor.{AbstractProcessor, ProcessorContext, ProcessorSupplier}
 import org.apache.kafka.streams.scala.ImplicitConversions._
 import org.apache.kafka.streams.scala.Serdes._
 import org.apache.kafka.streams.scala.kstream._
-import org.apache.kafka.streams.{StreamsBuilder => StreamsBuilderJ, _}
+import org.apache.kafka.streams.{KeyValue, StreamsConfig, TopologyDescription, StreamsBuilder => StreamsBuilderJ}
 import org.junit.Assert._
 import org.junit._
 
@@ -103,16 +103,15 @@ class TopologyTest {
     // build the Scala topology
     def getTopologyScala: TopologyDescription = {
 
-      import Serdes._
+      import org.apache.kafka.streams.scala.Serdes._
 
       val streamBuilder = new StreamsBuilder
       val textLines = streamBuilder.stream[String, String](inputTopic)
 
-      val _: KTable[String, Long] =
-        textLines
-          .flatMapValues(v => pattern.split(v.toLowerCase))
-          .groupBy((_, v) => v)
-          .count()
+      textLines
+        .flatMapValues(v => pattern.split(v.toLowerCase))
+        .groupBy((_, v) => v)
+        .count()
 
       streamBuilder.build().describe()
     }
@@ -136,6 +135,102 @@ class TopologyTest {
       }
 
       grouped.count()
+
+      streamBuilder.build().describe()
+    }
+
+    // should match
+    assertEquals(getTopologyScala, getTopologyJava)
+  }
+
+  @Test def shouldBuildIdenticalTopologyInJavaNScalaCogroupSimple(): Unit = {
+
+    // build the Scala topology
+    def getTopologyScala: TopologyDescription = {
+
+      import org.apache.kafka.streams.scala.Serdes._
+
+      val streamBuilder = new StreamsBuilder
+      val textLines = streamBuilder.stream[String, String](inputTopic)
+      textLines
+        .mapValues(v => v.length)
+        .groupByKey
+        .cogroup((_, v1, v2: Long) => v1 + v2)
+        .aggregate(0L)
+
+      streamBuilder.build().describe()
+    }
+
+    // build the Java topology
+    def getTopologyJava: TopologyDescription = {
+
+      val streamBuilder = new StreamsBuilderJ
+      val textLines: KStreamJ[String, String] = streamBuilder.stream[String, String](inputTopic)
+
+      val splits: KStreamJ[String, Int] = textLines.mapValues(
+        new ValueMapper[String, Int] {
+          def apply(s: String): Int = s.length
+        }
+      )
+
+      splits.groupByKey
+        .cogroup(new Aggregator[String, Int, Long] {
+          def apply(k: String, v: Int, a: Long): Long = a + v
+        })
+        .aggregate(new Initializer[Long] {
+          override def apply(): Long = 0L
+        })
+
+      streamBuilder.build().describe()
+    }
+
+    // should match
+    assertEquals(getTopologyScala, getTopologyJava)
+  }
+  @Test def shouldBuildIdenticalTopologyInJavaNScalaCogroup(): Unit = {
+
+    // build the Scala topology
+    def getTopologyScala: TopologyDescription = {
+
+      import org.apache.kafka.streams.scala.Serdes._
+
+      val streamBuilder = new StreamsBuilder
+      val textLines1 = streamBuilder.stream[String, String](inputTopic)
+      val textLines2 = streamBuilder.stream[String, String]("inputTopic2")
+
+      textLines1
+        .mapValues(v => v.length: Integer)
+        .groupByKey
+        .cogroup[Long]((_, v1, v2: Long) => v1 + v2)
+        .cogroup[String](textLines2.groupByKey, (_, v: String, a) => v.length + a)
+        .aggregate(0L)
+
+      streamBuilder.build().describe()
+    }
+
+    // build the Java topology
+    def getTopologyJava: TopologyDescription = {
+
+      val streamBuilder = new StreamsBuilderJ
+      val textLines1: KStreamJ[String, String] = streamBuilder.stream[String, String](inputTopic)
+      val textLines2: KStreamJ[String, String] = streamBuilder.stream[String, String]("inputTopic2")
+
+      val splits: KStreamJ[String, Int] = textLines1.mapValues(
+        new ValueMapper[String, Int] {
+          def apply(s: String): Int = s.length
+        }
+      )
+
+      splits.groupByKey
+        .cogroup(new Aggregator[String, Int, Long] {
+          def apply(k: String, v: Int, a: Long): Long = a + v
+        })
+        .cogroup(textLines2.groupByKey, new Aggregator[String, String, Long] {
+          def apply(k: String, v: String, a: Long): Long = v.length + a
+        })
+        .aggregate(new Initializer[Long] {
+          override def apply(): Long = 0L
+        })
 
       streamBuilder.build().describe()
     }
@@ -230,12 +325,12 @@ class TopologyTest {
           .transform(new TransformerSupplier[String, String, KeyValue[String, String]] {
             override def get(): Transformer[String, String, KeyValue[String, String]] =
               new Transformer[String, String, KeyValue[String, String]] {
-                override def init(context: ProcessorContext): Unit = Unit
+                override def init(context: ProcessorContext): Unit = ()
 
                 override def transform(key: String, value: String): KeyValue[String, String] =
                   new KeyValue(key, value.toLowerCase)
 
-                override def close(): Unit = Unit
+                override def close(): Unit = ()
               }
           })
           .groupBy((_, v) => v)
@@ -254,12 +349,12 @@ class TopologyTest {
         .transform(new TransformerSupplier[String, String, KeyValue[String, String]] {
           override def get(): Transformer[String, String, KeyValue[String, String]] =
             new Transformer[String, String, KeyValue[String, String]] {
-              override def init(context: ProcessorContext): Unit = Unit
+              override def init(context: ProcessorContext): Unit = ()
 
               override def transform(key: String, value: String): KeyValue[String, String] =
                 new KeyValue(key, value.toLowerCase)
 
-              override def close(): Unit = Unit
+              override def close(): Unit = ()
             }
         })
 
@@ -327,14 +422,14 @@ class TopologyTest {
       mappedStream
         .filter((k: String, _: String) => k == "A")
         .join(stream2)((v1: String, v2: Int) => v1 + ":" + v2.toString, JoinWindows.of(Duration.ofMillis(5000)))(
-          Joined.`with`(Serdes.String, Serdes.String, Serdes.Integer)
+          StreamJoined.`with`(Serdes.String, Serdes.String, Serdes.Integer)
         )
         .to(JOINED_TOPIC)
 
       mappedStream
         .filter((k: String, _: String) => k == "A")
         .join(stream3)((v1: String, v2: String) => v1 + ":" + v2.toString, JoinWindows.of(Duration.ofMillis(5000)))(
-          Joined.`with`(Serdes.String, Serdes.String, Serdes.String)
+          StreamJoined.`with`(Serdes.String, Serdes.String, Serdes.String)
         )
         .to(JOINED_TOPIC)
 
@@ -385,7 +480,7 @@ class TopologyTest {
         .mapValues[String](valueMapper)
         .process(processorSupplier)
 
-      val stream2 = mappedStream.groupByKey
+      val stream2: KStreamJ[String, Integer] = mappedStream.groupByKey
         .aggregate(initializer, aggregator, MaterializedJ.`with`(Serdes.String, SerdesJ.Integer))
         .toStream
       stream2.to(AGGREGATION_TOPIC, Produced.`with`(Serdes.String, SerdesJ.Integer))
@@ -407,10 +502,10 @@ class TopologyTest {
         .filter(new Predicate[String, String] {
           override def test(key: String, value: String): Boolean = key == "A"
         })
-        .join(stream2,
-              valueJoiner2,
-              JoinWindows.of(Duration.ofMillis(5000)),
-              JoinedJ.`with`(Serdes.String, Serdes.String, SerdesJ.Integer))
+        .join[Integer, String](stream2,
+                               valueJoiner2,
+                               JoinWindows.of(Duration.ofMillis(5000)),
+                               StreamJoinedJ.`with`(Serdes.String, Serdes.String, SerdesJ.Integer))
         .to(JOINED_TOPIC)
 
       mappedStream
@@ -420,7 +515,7 @@ class TopologyTest {
         .join(stream3,
               valueJoiner3,
               JoinWindows.of(Duration.ofMillis(5000)),
-              JoinedJ.`with`(Serdes.String, Serdes.String, SerdesJ.String))
+              StreamJoinedJ.`with`(Serdes.String, Serdes.String, SerdesJ.String))
         .to(JOINED_TOPIC)
 
       builder

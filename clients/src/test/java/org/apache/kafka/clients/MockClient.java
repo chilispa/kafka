@@ -73,6 +73,7 @@ public class MockClient implements KafkaClient {
     }
 
     private int correlation;
+    private Runnable wakeupHook;
     private final Time time;
     private final MockMetadataUpdater metadataUpdater;
     private final Map<String, ConnectionState> connections = new HashMap<>();
@@ -221,7 +222,7 @@ public class MockClient implements KafkaClient {
                     builder.latestAllowedVersion());
             AbstractRequest abstractRequest = request.requestBuilder().build(version);
             if (!futureResp.requestMatcher.matches(abstractRequest))
-                throw new IllegalStateException("Request matcher did not match next-in-line request " + abstractRequest);
+                throw new IllegalStateException("Request matcher did not match next-in-line request " + abstractRequest + " with prepared response " + futureResp.responseBody);
 
             UnsupportedVersionException unsupportedVersionException = null;
             if (futureResp.isUnsupportedRequest)
@@ -253,6 +254,9 @@ public class MockClient implements KafkaClient {
         if (numBlockingWakeups > 0) {
             numBlockingWakeups--;
             notify();
+        }
+        if (wakeupHook != null) {
+            wakeupHook.run();
         }
     }
 
@@ -298,7 +302,6 @@ public class MockClient implements KafkaClient {
         return Math.max(0, currentTimeMs - startTimeMs);
     }
 
-
     private void checkTimeoutOfPendingRequests(long nowMs) {
         ClientRequest request = requests.peek();
         while (request != null && elapsedTimeMs(nowMs, request.createdTimeMs()) > request.requestTimeoutMs()) {
@@ -330,7 +333,6 @@ public class MockClient implements KafkaClient {
 
     // Utility method to enable out of order responses
     public void respondToRequest(ClientRequest clientRequest, AbstractResponse response) {
-        AbstractRequest request = clientRequest.requestBuilder().build();
         requests.remove(clientRequest);
         short version = clientRequest.requestBuilder().latestAllowedVersion();
         responses.add(new ClientResponse(clientRequest.makeHeader(version), clientRequest.callback(), clientRequest.destination(),
@@ -543,6 +545,10 @@ public class MockClient implements KafkaClient {
                 return node;
         }
         return null;
+    }
+
+    public void setWakeupHook(Runnable wakeupHook) {
+        this.wakeupHook = wakeupHook;
     }
 
     /**
