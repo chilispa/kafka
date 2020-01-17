@@ -149,7 +149,7 @@ public abstract class TimestampConverter<R extends ConnectRecord<R>> implements 
             }
 
             @Override
-            public Schema typeSchema() {
+            public Schema typeSchema(boolean isOptional) {
                 return Schema.OPTIONAL_STRING_SCHEMA;
             }
 
