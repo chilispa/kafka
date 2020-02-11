@@ -82,9 +82,13 @@ public abstract class TimestampConverter<R extends ConnectRecord<R>> implements 
     private static final String TYPE_DATE = "Date";
     private static final String TYPE_TIME = "Time";
     private static final String TYPE_TIMESTAMP = "Timestamp";
-    private static final Set<String> VALID_TYPES = new HashSet<>(Arrays.asList(TYPE_STRING, TYPE_OPTIONAL_STRING, TYPE_UNIX, TYPE_DATE, TYPE_TIME, TYPE_TIMESTAMP));
+    private static final String TYPE_OPTIONAL_TIMESTAMP = "optionalTimestamp";
+    private static final Set<String> VALID_TYPES = new HashSet<>(Arrays.asList(TYPE_STRING, TYPE_OPTIONAL_STRING, TYPE_UNIX, TYPE_DATE, TYPE_TIME, TYPE_TIMESTAMP, TYPE_OPTIONAL_TIMESTAMP));
 
     private static final TimeZone UTC = TimeZone.getTimeZone("UTC");
+
+    public static final Schema OPTIONAL_TIMESTAMP_SCHEMA = Timestamp.builder().optional().schema();
+
 
     private interface TimestampTranslator {
         /**
@@ -248,6 +252,26 @@ public abstract class TimestampConverter<R extends ConnectRecord<R>> implements 
                 return orig;
             }
         });
+
+        TRANSLATORS.put(TYPE_OPTIONAL_TIMESTAMP, new TimestampTranslator() {
+            @Override
+            public Date toRaw(Config config, Object orig) {
+                if (!(orig instanceof Date))
+                    throw new DataException("Expected Timestamp to be a java.util.Date, but found " + orig.getClass());
+                return (Date) orig;
+            }
+
+            @Override
+            public Schema typeSchema() {
+                return OPTIONAL_TIMESTAMP_SCHEMA;
+            }
+
+            @Override
+            public Date toType(Config config, Date orig) {
+                return orig;
+            }
+        });
+
     }
 
     // This is a bit unusual, but allows the transformation config to be passed to static anonymous classes to customize
